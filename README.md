@@ -3,6 +3,8 @@
 
 A demonstration project showcasing infrastructure as code with Terraform and a Python web application deployed using CircleCI.
 
+![Project Screenshot](Screenshot.png)
+
 ## Architecture
 
 - **Infrastructure**: AWS resources provisioned with Terraform
