@@ -1,0 +1,65 @@
+services:
+  mysql:
+    image: mariadb:11.4.5   # or mariadb:11.4
+    environment:
+      MARIADB_ROOT_PASSWORD: example
+      MARIADB_DATABASE: demo
+      MARIADB_USER: demo
+      MARIADB_PASSWORD: demo
+    volumes:
+      - ./db:/docker-entrypoint-initdb.d:ro
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mariadb-admin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "printf '' > /dev/tcp/127.0.0.1/11434"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  ollama-puller:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama:/root/.ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: ollama pull llama3.2:1b
+    restart: "no"
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: demo
+      DB_PASS: demo
+      DB_NAME: demo
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.2:1b
+      MAX_INPUT_CHARS: 20000
+    volumes:
+      - ./web:/app/web:ro
+      - ./api:/app
+    depends_on:
+      - mysql
+      - ollama
+
+volumes:
+  mysql_data:
+  ollama:
+  uploads:

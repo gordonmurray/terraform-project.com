@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Document Summary</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Document Summary</h1>
+
+    <section id="login-section">
+      <h2>Login</h2>
+      <form id="login-form">
+        <input name="username" placeholder="username" value="admin" required />
+        <input name="password" placeholder="password" value="admin" required />
+        <button type="submit">Login</button>
+      </form>
+      <div id="login-msg" class="msg"></div>
+    </section>
+
+    <section id="app-section" style="display:none;">
+      <h2>Documents</h2>
+      <form id="upload-form">
+        <input type="file" name="file" accept=".pdf,.txt,.md,.html" required />
+        <button type="submit">Upload & Summarize</button>
+      </form>
+      <div id="upload-result" class="msg"></div>
+
+      <table id="docs-table">
+        <thead><tr><th>ID</th><th>Filename</th><th>Size</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <div id="summary" class="summary"></div>
+    </section>
+  </div>
+
+  <footer class="privacy-note">
+    <p>🔒 All document processing is performed locally using an on-device AI model. No data is sent to third-party services.</p>
+    <p>This is a small demo project, please be gentle. Source available on Github at <a href="https://github.com/gordonmurray/terraform-project.com" target="_blank">https://github.com/gordonmurray/terraform-project.com</a></p>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

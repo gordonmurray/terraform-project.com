@@ -1,0 +1,86 @@
+version: 2.1
+
+jobs:
+  build_test_api:
+    machine: true
+    environment:
+      IMAGE_TAG: << pipeline.git.revision >>
+    steps:
+      - checkout
+      - run:
+          name: Run Python Unit Tests
+          working_directory: app/api
+          command: |
+            pip install -r requirements.txt
+            python -m unittest discover
+      - run: |
+          # Build from ./app/api
+          docker build -f app/api/Dockerfile -t "api-test:$IMAGE_TAG" app/api
+          # Run and test /health (container listens on 8000; map to 8080)
+          docker rm -f api-test || true
+          docker run -d --name api-test -p 8080:8000 "api-test:$IMAGE_TAG"
+          # Wait for readiness (max ~30s)
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/health >/dev/null; then
+              echo "Healthcheck OK"; break
+            fi
+            sleep 1
+            if [ "$i" -eq 30 ]; then echo "Healthcheck failed"; docker logs api-test; exit 1; fi
+          done
+
+  build_push_api:
+    machine: true
+    environment:
+      IMAGE_TAG: << pipeline.git.revision >>
+    steps:
+      - checkout
+
+      - run:
+          name: Install Ollama
+          command: |
+            curl -fsSL https://ollama.com/install.sh | sh
+            sudo -u ollama /usr/local/bin/ollama pull qwen2.5:0.5b-instruct
+      - run: |
+          : "${AWS_REGION:?set in CircleCI env vars}"
+          : "${AWS_ACCOUNT_ID:?set in CircleCI env vars}"
+          : "${ECR_REPO:?set in CircleCI env vars}"
+          : "${IMAGE_TAG:?}"
+
+          # Login to ECR
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+
+          # Build from ./app
+          docker build -f app/Dockerfile -t "$ECR_REPO:$IMAGE_TAG" app
+
+          # Tag & push to ECR
+          docker tag "$ECR_REPO:$IMAGE_TAG" "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG"
+          docker push "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG"
+
+      # Deploy via SSM
+      - run: |
+          : "${AWS_REGION:?}"; : "${AWS_ACCOUNT_ID:?}"; : "${ECR_REPO:?}"; : "${IMAGE_TAG:?}"
+
+          aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=tag:Role,Values=terraform-project-ec2" \
+            --comment "Deploy $ECR_REPO:$IMAGE_TAG" \
+            --parameters '{ "commands":[
+                "set -euo pipefail",
+                "aws ecr get-login-password --region '"$AWS_REGION"' | docker login --username AWS --password-stdin '"$AWS_ACCOUNT_ID"'.dkr.ecr.'"$AWS_REGION"'.amazonaws.com",
+                "docker rm -f myapp || true",
+                "docker run -d --name myapp --restart unless-stopped -p 8080:8000 --add-host=host.docker.internal:host-gateway -e OLLAMA_URL=http://host.docker.internal:11434 '"$AWS_ACCOUNT_ID"'.dkr.ecr.'"$AWS_REGION"'.amazonaws.com/'"$ECR_REPO"':'"$IMAGE_TAG"'"
+              ] }' \
+            --region "$AWS_REGION"
+
+workflows:
+  build:
+    jobs:
+      - build_test_api:
+          filters:
+            branches:
+              ignore: main
+      - build_push_api:
+          filters:
+            branches:
+              only: main
